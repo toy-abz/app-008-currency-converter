@@ -1,50 +1,451 @@
-# Day08 — Currency Converter
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Day08 — 為替レート変換アプリ</title>
+  <meta name="description" content="ExchangeRate-API を利用した学習用通貨コンバーター。キャッシュ・履歴・お気に入り・スワップ対応。GitHub Pages で動く単一HTML。">
+  <style>
+    :root{
+      --bg:#0b1020; --panel:#121836; --text:#e9ecf1; --muted:#9aa3b2; --accent:#7aa2ff; --ok:#6efacc; --bad:#ff6b6b;
+      --edge:#2a3566; --card:#0f1430; --shadow:0 10px 24px rgba(0,0,0,.35);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; color:var(--text);
+      background:radial-gradient(1000px 500px at 80% -10%,#16204a,transparent),var(--bg);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans JP",sans-serif;
+      display:grid; place-items:center;
+    }
+    .app{
+      width:min(96vw,880px);
+      background:linear-gradient(180deg,rgba(255,255,255,.03),transparent),var(--panel);
+      border:1px solid rgba(255,255,255,.06); border-radius:18px; box-shadow:var(--shadow);
+      padding:20px 20px 24px;
+    }
+    header{display:flex; align-items:center; justify-content:space-between; gap:12px}
+    h1{margin:0; font-size:18px}
+    .sub{color:var(--muted); font-size:12px}
+    .badge{display:inline-grid; place-items:center; padding:2px 8px; border-radius:999px; font-size:12px;
+      border:1px solid var(--edge); background:var(--card); color:var(--muted)}
+    .badge.live{color:#bfe0ff; border-color:#365fa8}
+    .badge.cache{color:#bafbe9; border-color:#2a7e68}
+    .grid{display:grid; gap:14px; margin-top:14px}
+    .card{background:var(--card); border:1px solid var(--edge); border-radius:14px; padding:14px}
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+    input[type=number], select{
+      padding:10px 12px; border-radius:12px; border:1px solid var(--edge); background:#0d1330; color:var(--text); min-width:120px;
+      font-size:14px;
+    }
+    .result{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:12px; border-radius:12px; background:#0d1330; border:1px solid var(--edge); font-size:16px
+    }
+    .mono{font-variant-numeric:tabular-nums; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+    .btn{
+      border:0; border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer; transition:transform .05s ease;
+      background:#0d1330; color:var(--text); border:1px solid var(--edge); min-height:40px
+    }
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{background:linear-gradient(180deg,var(--accent),#557aff); color:#071022}
+    .btn.ghost{background:#0d1330}
+    .btn.good{background:linear-gradient(180deg,var(--ok),#4eddb5); color:#05231a}
+    .btn.icon{aspect-ratio:1/1; width:42px; display:grid; place-items:center; font-size:18px}
+    .error{color:#ffd6de}
+    .muted{color:var(--muted)}
+    .pill{
+      padding:6px 10px; border-radius:999px; border:1px solid var(--edge); background:#0d1330; cursor:pointer; font-size:13px;
+    }
+    .pill.active{outline:2px solid var(--accent); outline-offset:1px}
+    .favorites{display:flex; gap:8px; flex-wrap:wrap}
+    .history{display:grid; gap:8px}
+    .history .item{display:flex; justify-content:space-between; align-items:center; gap:10px; background:#0d1330; border:1px solid var(--edge); border-radius:12px; padding:10px}
+    .small{font-size:12px}
+    .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#0f1430; border:1px solid #28305b; padding:2px 6px; border-radius:6px;}
+    a{color:#9dd5ff; text-decoration:none}
+  </style>
+</head>
+<body>
+  <main class="app" role="application" aria-labelledby="title">
+    <header>
+      <div>
+        <h1 id="title">Currency Converter</h1>
+        <div class="sub">Day08 — 外部データ（ExchangeRate-API）＋状態管理＋実用UI｜Enter=換算・<span class="kbd">S</span>=スワップ</div>
+      </div>
+      <div class="row">
+        <span id="statusBadge" class="badge">—</span>
+        <span id="updatedAt" class="small muted"></span>
+      </div>
+    </header>
 
-A simple **currency converter web app** built with JavaScript.  
-It fetches live exchange rates from [ExchangeRate-API](https://www.exchangerate-api.com/) and supports favorites, history, swap, and caching.  
+    <section class="grid">
+      <!-- 入力と通貨選択 -->
+      <div class="card" aria-label="換算フォーム">
+        <div class="row">
+          <label>金額
+            <input id="amount" type="number" inputmode="decimal" min="0" step="any" placeholder="金額を入力" />
+          </label>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <label>From
+            <select id="from"></select>
+          </label>
 
-👉 [Live Demo on GitHub Pages](https://toy-abz.github.io/app-008-currency-converter/)
+          <button id="swap" class="btn icon" aria-label="From/To を入れ替え">↔</button>
 
----
+          <label>To
+            <select id="to"></select>
+          </label>
+        </div>
 
-## Features
-- Convert between major currencies (JPY, USD, EUR, GBP, etc.)
-- **Swap** (From ↔ To)
-- **Favorites**: pin up to 8 frequently used currencies
-- **History**: recent 10 conversions stored in LocalStorage
-- **1-hour cache**: API calls minimized, faster response
-- **Copy result** button
-- Keyboard shortcuts: Enter=Convert, S=Swap
-- Responsive design, works on mobile
+        <div id="formError" class="small error" role="alert" style="margin-top:8px"></div>
 
----
+        <div class="result" style="margin-top:10px" aria-live="polite" aria-atomic="true">
+          <div id="resultText" class="mono">—</div>
+          <button id="copyBtn" class="btn ghost icon" title="結果をコピー" aria-label="結果をコピー">⧉</button>
+        </div>
+        <div class="small muted" id="rateNote" style="margin-top:6px"></div>
+      </div>
 
-## How to Use
-1. Clone or download this repository
-2. Open `index.html` in your browser  
-   *(⚠️ You must replace `YOUR_API_KEY_HERE` with your own key from [ExchangeRate-API](https://www.exchangerate-api.com/))*
-3. Try conversions, save favorites, and check history
+      <!-- お気に入り通貨 -->
+      <div class="card" aria-label="お気に入り通貨">
+        <div class="row" style="justify-content:space-between">
+          <strong>お気に入り通貨</strong>
+          <span class="small muted">クリックで From に設定（長押しで To）</span>
+        </div>
+        <div id="favWrap" class="favorites" style="margin-top:10px"></div>
+      </div>
 
----
+      <!-- 履歴 -->
+      <div class="card" aria-label="履歴">
+        <div class="row" style="justify-content:space-between">
+          <strong>履歴（直近10件）</strong>
+          <div class="row">
+            <button id="clearHistory" class="btn ghost small">履歴クリア</button>
+          </div>
+        </div>
+        <div id="history" class="history" style="margin-top:10px"></div>
+      </div>
+    </section>
 
-## Screenshots
-(Add screenshots here after deployment, e.g. app UI on desktop/mobile)
+    <footer class="row" style="justify-content:space-between; margin-top:10px">
+      <div class="small muted">データ提供: <a href="https://www.exchangerate-api.com/" target="_blank" rel="noopener">ExchangeRate-API</a>（学習用無料キー）</div>
+      <div class="small muted">保存先: LocalStorage（キャッシュTTL=1時間／UI状態／履歴／お気に入り）</div>
+    </footer>
 
----
+    <!-- アクセシビリティ通知 -->
+    <div id="a11y" class="sr" aria-live="assertive"></div>
+  </main>
 
-## Tech Stack
-- HTML5 / CSS3
-- JavaScript (Vanilla, no frameworks)
-- [ExchangeRate-API](https://www.exchangerate-api.com/) (Free tier, for learning use only)
+<script>
+/**
+ * Day08 — 為替レート変換アプリ（単一HTML）
+ * - ExchangeRate-API を使用（学習・個人利用前提）
+ * - 1時間キャッシュ／履歴10件／お気に入り通貨／スワップ／コピー
+ * - 入力バリデーション・API失敗時フォールバック（キャッシュがあれば利用）
+ * - セキュリティ: クライアント埋め込みキーは露出前提（学習用）。商用時はサーバ経由が必須。
+ */
+(function(){
+  'use strict';
 
----
+  // === 📝 必須：ここにあなたの API キーを入れてください ===
+  // 公式: https://www.exchangerate-api.com/
+  const API_KEY = '57ba9d54ff982b018381881b'; // ← ← ここを書き換える
+  // ==========================================================
 
-## Notes
-- This project is for **learning purposes** (100DaysOfCode challenge).  
-- API key is embedded in client-side code. For production use, a backend proxy is required.  
-- Free API plan has limitations (request count, update frequency, no commercial use).  
+  // —— 定数・キー類 ——
+  const API_BASE = 'https://v6.exchangerate-api.com/v6';
+  const CACHE_TTL_MS = 60 * 60 * 1000; // 1時間
+  const LS = {
+    CACHE: 'cc-cache',       // { base, fetchedAt, conversion_rates }
+    UI:    'cc-ui',          // { from, to, amount }
+    FAV:   'cc-favorites',   // [ 'JPY', 'USD', ... ]
+    HIST:  'cc-history'      // [ {amount, from, to, rate, result, ts} ]
+  };
+  const MAX_HISTORY = 10;
 
----
+  // —— 通貨候補（主要通貨＋アジア中心） ——
+  const CURRENCIES = [
+    'JPY','USD','EUR','GBP','AUD','CAD','CHF','CNY','HKD','KRW','SGD','NZD','SEK','NOK','DKK','INR','THB','MYR','IDR','PHP','TWD'
+  ];
 
-## License
-MIT
+  // —— 要素参照 ——
+  const $ = (s)=>document.querySelector(s);
+  const amountEl = $('#amount');
+  const fromSel = $('#from');
+  const toSel = $('#to');
+  const swapBtn = $('#swap');
+  const resText = $('#resultText');
+  const formError = $('#formError');
+  const copyBtn = $('#copyBtn');
+  const favWrap = $('#favWrap');
+  const histWrap = $('#history');
+  const clearHistoryBtn = $('#clearHistory');
+  const statusBadge = $('#statusBadge');
+  const updatedAtEl = $('#updatedAt');
+  const rateNote = $('#rateNote');
+  const a11y = $('#a11y');
+
+  // —— ユーティリティ ——
+  const pad2 = (n)=>n.toString().padStart(2,'0');
+  const fmtMoney = (n)=> {
+    if(typeof n !== 'number' || !isFinite(n)) return '—';
+    // ロケール非依存の簡易フォーマット（日本語圏でも桁区切り）
+    return n.toLocaleString(undefined, {maximumFractionDigits: 2, minimumFractionDigits: 2});
+  };
+  function timeAgo(ts){
+    const d = Date.now() - ts;
+    if(d < 60_000) return 'たった今';
+    if(d < 3_600_000) return Math.floor(d/60_000)+'分前';
+    if(d < 86_400_000) return Math.floor(d/3_600_000)+'時間前';
+    const date = new Date(ts);
+    return `${date.getFullYear()}/${pad2(date.getMonth()+1)}/${pad2(date.getDate())}`;
+  }
+  const saveLS = (k,v)=> localStorage.setItem(k, JSON.stringify(v));
+  const loadLS = (k,fb)=> { try{ const v = JSON.parse(localStorage.getItem(k)||'null'); return v ?? fb; }catch(_){ return fb; } };
+
+  // —— セレクト初期化（お気に入りは後で上位に表示） ——
+  function fillSelectOptions(select, items){
+    select.innerHTML = '';
+    items.forEach(code=>{
+      const opt = document.createElement('option');
+      opt.value = code; opt.textContent = code;
+      select.appendChild(opt);
+    });
+  }
+
+  // —— お気に入り通貨UI ——
+  function renderFavorites(){
+    const favs = loadLS(LS.FAV, ['JPY','USD','EUR']); // 初期お気に入り
+    favWrap.innerHTML = '';
+    favs.forEach(code=>{
+      const b = document.createElement('button');
+      b.className = 'pill';
+      b.textContent = code;
+      // クリック＝From設定、長押し（contextmenu）＝To設定
+      b.addEventListener('click', ()=>{ fromSel.value = code; announce('From を '+code+' に設定'); recalc(); saveUI(); });
+      b.addEventListener('contextmenu', (e)=>{ e.preventDefault(); toSel.value = code; announce('To を '+code+' に設定'); recalc(); saveUI(); });
+      favWrap.appendChild(b);
+    });
+    // セレクトの先頭に favs を並べ、それ以外を続ける
+    const rest = CURRENCIES.filter(c=> !favs.includes(c));
+    const ordered = [...favs, ...rest];
+    fillSelectOptions(fromSel, ordered);
+    fillSelectOptions(toSel, ordered);
+  }
+
+  // —— 履歴UI ——
+  function renderHistory(){
+    const hist = loadLS(LS.HIST, []);
+    histWrap.innerHTML = '';
+    if(hist.length === 0){
+      const empty = document.createElement('div');
+      empty.className = 'small muted';
+      empty.textContent = '履歴はまだありません';
+      histWrap.appendChild(empty);
+      return;
+    }
+    hist.forEach(h=>{
+      const row = document.createElement('div');
+      row.className = 'item';
+      const left = document.createElement('div');
+      left.innerHTML = `<div class="mono">${fmtMoney(h.amount)} ${h.from} → ${h.to}</div>
+                        <div class="small muted">${timeAgo(h.ts)}・rate ${h.rate}</div>`;
+      const right = document.createElement('div');
+      right.className = 'mono';
+      right.textContent = fmtMoney(h.result) + ' ' + h.to;
+      row.appendChild(left); row.appendChild(right);
+      histWrap.appendChild(row);
+    });
+  }
+
+  // —— ステータスバッジ ——
+  function setStatus(kind, ts){
+    statusBadge.className = 'badge';
+    if(kind === 'live'){
+      statusBadge.classList.add('live');
+      statusBadge.textContent = 'Live';
+      updatedAtEl.textContent = ts ? `更新: ${timeAgo(ts)}` : '';
+    }else if(kind === 'cache'){
+      statusBadge.classList.add('cache');
+      statusBadge.textContent = 'Cache';
+      updatedAtEl.textContent = ts ? `取得: ${timeAgo(ts)}` : '';
+    }else{
+      statusBadge.textContent = '—';
+      updatedAtEl.textContent = '';
+    }
+  }
+
+  // —— API: 最新レート取得（BASE=from） ——
+  async function fetchRates(baseCode){
+    // キャッシュを確認
+    const cache = loadLS(LS.CACHE, null);
+    const now = Date.now();
+    if(cache && cache.base === baseCode && (now - cache.fetchedAt) < CACHE_TTL_MS){
+      setStatus('cache', cache.fetchedAt);
+      return cache.conversion_rates;
+    }
+    // APIキー未設定のガード
+    if(!API_KEY || API_KEY === 'YOUR_API_KEY_HERE'){
+      throw new Error('APIキーが設定されていません（コード上部の API_KEY を差し替えてください）');
+    }
+    // API 取得
+    const url = `${API_BASE}/${API_KEY}/latest/${encodeURIComponent(baseCode)}`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTPエラー: '+res.status);
+    const data = await res.json();
+    if(data.result !== 'success' || !data.conversion_rates){
+      throw new Error('APIレスポンス不正');
+    }
+    // キャッシュ保存
+    const packed = { base: baseCode, fetchedAt: Date.now(), conversion_rates: data.conversion_rates };
+    saveLS(LS.CACHE, packed);
+    setStatus('live', packed.fetchedAt);
+    return data.conversion_rates;
+  }
+
+  // —— 入力検証 ——
+  function validate(){
+    formError.textContent = '';
+    const v = amountEl.value.trim();
+    if(v === ''){ formError.textContent = '金額を入力してください'; return false; }
+    const n = Number(v);
+    if(!isFinite(n) || n < 0){ formError.textContent = '0以上の数値を入力してください'; return false; }
+    return true;
+  }
+
+  // —— 計算 + 表示 + 履歴処理 ——
+  async function recalc(){
+    if(!validate()) { resText.textContent = '—'; return; }
+    const amount = Number(amountEl.value);
+    const from = fromSel.value, to = toSel.value;
+
+    // From と To が同じならそのまま
+    if(from === to){
+      const line = `${fmtMoney(amount)} ${from} = ${fmtMoney(amount)} ${to}`;
+      resText.textContent = line;
+      rateNote.textContent = '同一通貨のため 1:1 です';
+      return;
+    }
+
+    // レート取得（キャッシュ→API）。API失敗時はキャッシュを試す
+    let rates = null;
+    try{
+      rates = await fetchRates(from);
+    }catch(e){
+      const cache = loadLS(LS.CACHE, null);
+      if(cache && cache.base === from){
+        rates = cache.conversion_rates;
+        setStatus('cache', cache.fetchedAt);
+      }else{
+        formError.textContent = 'レート取得に失敗しました（後で再試行してください）';
+        resText.textContent = '—';
+        rateNote.textContent = '';
+        return;
+      }
+    }
+
+    // 対象レートが存在するか
+    const r = rates[to];
+    if(typeof r !== 'number'){
+      formError.textContent = `選択した通貨ペア（${from}→${to}）は計算できません`;
+      resText.textContent = '—';
+      rateNote.textContent = '';
+      return;
+    }
+
+    const result = amount * r;
+    const line = `${fmtMoney(amount)} ${from} = ${fmtMoney(result)} ${to}`;
+    resText.textContent = line;
+    rateNote.textContent = `計算式: amount × rate (${r})`;
+
+    // 履歴に保存（先頭に追加、MAX_HISTORYで刈り込み）
+    const hist = loadLS(LS.HIST, []);
+    hist.unshift({ amount, from, to, rate: r, result: Number(result.toFixed(2)), ts: Date.now() });
+    if(hist.length > MAX_HISTORY) hist.length = MAX_HISTORY;
+    saveLS(LS.HIST, hist);
+    renderHistory();
+
+    // UI 状態保存
+    saveUI();
+  }
+
+  // —— スワップ（From/To入れ替え） ——
+  function swap(){
+    const tmp = fromSel.value;
+    fromSel.value = toSel.value;
+    toSel.value = tmp;
+    announce('From と To を入れ替え');
+    recalc();
+  }
+
+  // —— コピー ——
+  async function copyResult(){
+    const text = resText.textContent.trim();
+    if(!text || text === '—') return;
+    try{
+      await navigator.clipboard.writeText(text);
+      copyBtn.classList.add('good');
+      copyBtn.textContent = '✓';
+      setTimeout(()=>{ copyBtn.classList.remove('good'); copyBtn.textContent='⧉'; }, 900);
+      announce('結果をコピーしました');
+    }catch(_){
+      // 失敗時は選択→アラートの簡易フォールバック
+      alert('コピーに失敗しました。手動で選択してください。\\n' + text);
+    }
+  }
+
+  // —— UI状態の保存/復元 ——
+  function saveUI(){
+    const ui = { from: fromSel.value, to: toSel.value, amount: amountEl.value ? Number(amountEl.value) : '' };
+    saveLS(LS.UI, ui);
+  }
+  function restoreUI(){
+    const ui = loadLS(LS.UI, null);
+    if(ui){
+      if(ui.amount !== '' && ui.amount != null) amountEl.value = ui.amount;
+      if(CURRENCIES.includes(ui.from)) fromSel.value = ui.from;
+      if(CURRENCIES.includes(ui.to)) toSel.value = ui.to;
+    }else{
+      // デフォルト
+      amountEl.value = 10000;
+      fromSel.value = 'JPY';
+      toSel.value = 'USD';
+    }
+  }
+
+  // —— アクセシビリティ通知 ——
+  function announce(msg){ a11y.textContent = msg; }
+
+  // —— イベント登録 ——
+  amountEl.addEventListener('input', ()=> { /* リアルタイム換算 */ recalc(); });
+  fromSel.addEventListener('change', ()=> { recalc(); saveUI(); });
+  toSel.addEventListener('change', ()=> { recalc(); saveUI(); });
+  swapBtn.addEventListener('click', swap);
+  copyBtn.addEventListener('click', copyResult);
+  clearHistoryBtn.addEventListener('click', ()=>{
+    saveLS(LS.HIST, []);
+    renderHistory();
+    announce('履歴をクリアしました');
+  });
+
+  // ショートカット: Enter=換算 / S=スワップ
+  window.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ e.preventDefault(); recalc(); }
+    if(e.key && e.key.toLowerCase() === 's'){ e.preventDefault(); swap(); }
+  });
+
+  // —— 初期化フロー ——
+  (function init(){
+    renderFavorites();   // お気に入りを読みつつセレクトも初期化
+    restoreUI();         // UI状態を反映
+    renderHistory();     // 履歴描画
+    setStatus(null);     // ステータス初期化
+    recalc();            // 初回換算（キャッシュがあれば即表示）
+  })();
+
+})();
+</script>
+</body>
+</html>
